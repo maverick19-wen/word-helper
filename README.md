@@ -46,6 +46,7 @@ word-helper/
 ├── .gitignore
 ├── Dockerfile             # 云端部署镜像：构建时下载词典与 WordNet
 ├── .dockerignore
+├── render.yaml            # Render Blueprint 云端部署配置
 ├── README.md
 ├── LICENSE
 └── data/                  # 本地生成，已加入 .gitignore
@@ -175,7 +176,7 @@ docker run -d --name word-helper --restart unless-stopped \
 
 然后手机通过 `http://服务器公网IP:8000` 访问。**这是使用 HTTP Basic 认证和 API Key 的服务，公网长期使用时应提供 HTTPS**，例如在容器前使用 Caddy/Nginx 反向代理，或部署到自带 HTTPS 域名的托管平台。
 
-也可以把项目目录部署到支持 Docker 的托管平台（如 Render、Railway 等），在平台的 Environment/Secrets 中配置 `LLM_API_KEY`、`LLM_BASE_URL`、`LLM_MODEL` 和 `ACCESS_PASSWORD`。平台会提供 HTTPS 地址。
+也可以使用仓库中的 `render.yaml` Blueprint 部署到 Render：在 Render 中新建 Blueprint、选择本仓库，按提示填写 `ACCESS_PASSWORD`。部署完成后，再在 Render 的 Environment 页面补充 `LLM_API_KEY`（可选提供方地址和模型）。平台会提供 HTTPS 地址，免费实例闲置后可能休眠，首次访问需要等待唤醒。
 
 健康检查接口为 `GET /health`，不需要认证，可供云平台探活。缓存路径可以用 `CACHE_DB_PATH` 指向持久卷；上述 Docker 命令已将 `/app/cache` 挂载为命名卷。
 

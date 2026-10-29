@@ -1,0 +1,19 @@
+services:
+  - type: web
+    name: word-helper
+    runtime: docker
+    plan: free
+    region: singapore
+    branch: main
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /health
+    autoDeploy: true
+    envVars:
+      - key: LLM_BASE_URL
+        value: https://api.openai.com/v1
+      - key: LLM_MODEL
+        value: gpt-4o-mini
+      - key: ACCESS_USERNAME
+        value: wordhelper
+      - key: ACCESS_PASSWORD
+        sync: false
