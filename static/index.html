@@ -1,0 +1,932 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Word Helper：基于 ECDICT、WordNet 和 LLM 的英语单词查询工具">
+  <title>Word Helper · 英语单词查询</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Crect width='100' height='100' rx='24' fill='%2318231c'/%3E%3Ctext x='50' y='70' font-family='Georgia,serif' font-size='58' fill='%23d9f27c' text-anchor='middle'%3EW%3C/text%3E%3C/svg%3E">
+  <style>
+    :root {
+      --bg: #f2eee4;
+      --paper: #fffdf7;
+      --ink: #17231c;
+      --muted: #687268;
+      --line: #d8d1c1;
+      --accent: #d9f27c;
+      --accent-strong: #b9d955;
+      --orange: #eaa05a;
+      --danger: #a44534;
+      --shadow: 0 22px 65px rgba(48, 42, 27, 0.09);
+      --radius: 26px;
+      --sans: "Avenir Next", "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", sans-serif;
+      --serif: "Iowan Old Style", "Baskerville", "Palatino Linotype", Georgia, serif;
+    }
+
+    * { box-sizing: border-box; }
+
+    html { scroll-behavior: smooth; }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      color: var(--ink);
+      background:
+        radial-gradient(circle at 8% 2%, rgba(217, 242, 124, 0.52), transparent 27rem),
+        radial-gradient(circle at 94% 8%, rgba(234, 160, 90, 0.17), transparent 22rem),
+        var(--bg);
+      font-family: var(--sans);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    body::before {
+      content: "";
+      position: fixed;
+      inset: 0;
+      pointer-events: none;
+      opacity: 0.24;
+      background-image: radial-gradient(rgba(23, 35, 28, 0.25) 0.6px, transparent 0.6px);
+      background-size: 18px 18px;
+      mask-image: linear-gradient(to bottom, black, transparent 68%);
+    }
+
+    button, input { font: inherit; }
+    button { cursor: pointer; }
+    [hidden] { display: none !important; }
+
+    .shell {
+      position: relative;
+      z-index: 1;
+      width: min(100% - 36px, 920px);
+      margin: 0 auto;
+      padding: 56px 0 32px;
+    }
+
+    .hero { text-align: center; padding: 10px 0 30px; }
+
+    .eyebrow {
+      display: inline-flex;
+      align-items: center;
+      gap: 9px;
+      padding: 8px 13px;
+      border: 1px solid rgba(23, 35, 28, 0.18);
+      border-radius: 999px;
+      background: rgba(255, 253, 247, 0.55);
+      color: #4e5a50;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.16em;
+    }
+
+    .eyebrow-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #6f9e33;
+      box-shadow: 0 0 0 4px rgba(111, 158, 51, 0.13);
+    }
+
+    h1 {
+      margin: 22px 0 12px;
+      font-family: var(--serif);
+      font-size: clamp(3.65rem, 10vw, 6.8rem);
+      font-weight: 500;
+      line-height: 0.92;
+      letter-spacing: -0.065em;
+    }
+
+    h1 em {
+      position: relative;
+      font-weight: 400;
+      font-style: italic;
+      z-index: 0;
+    }
+
+    h1 em::after {
+      content: "";
+      position: absolute;
+      left: -2%;
+      right: -3%;
+      bottom: 4%;
+      height: 21%;
+      z-index: -1;
+      border-radius: 2px;
+      background: var(--accent);
+      transform: rotate(-1.5deg);
+    }
+
+    h1 .period { color: var(--orange); }
+
+    .lede {
+      max-width: 540px;
+      margin: 0 auto;
+      color: var(--muted);
+      font-size: 15px;
+      line-height: 1.8;
+    }
+
+    .search-form { max-width: 720px; margin: 30px auto 0; }
+
+    .search-box {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 8px 8px 20px;
+      border: 1.5px solid var(--ink);
+      border-radius: 18px;
+      background: var(--paper);
+      box-shadow: 7px 7px 0 rgba(23, 35, 28, 0.1);
+      transition: box-shadow 160ms ease, transform 160ms ease;
+    }
+
+    .search-box:focus-within {
+      transform: translate(-1px, -1px);
+      box-shadow: 10px 10px 0 rgba(23, 35, 28, 0.12);
+    }
+
+    .search-icon { flex: 0 0 auto; color: #6b766d; }
+
+    #word-input {
+      flex: 1;
+      min-width: 0;
+      padding: 12px 4px;
+      border: 0;
+      outline: 0;
+      background: transparent;
+      color: var(--ink);
+      font-size: clamp(17px, 2.5vw, 20px);
+      letter-spacing: -0.015em;
+    }
+
+    #word-input::placeholder { color: #9b9f92; }
+
+    .search-button {
+      flex: 0 0 auto;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-width: 104px;
+      min-height: 52px;
+      padding: 0 21px;
+      border: 0;
+      border-radius: 12px;
+      background: var(--ink);
+      color: var(--paper);
+      font-size: 14px;
+      font-weight: 700;
+      transition: background 160ms ease, transform 160ms ease;
+    }
+
+    .search-button:hover { background: #2b3a30; }
+    .search-button:active { transform: scale(0.98); }
+    .search-button:disabled { cursor: wait; opacity: 0.74; }
+
+    .search-hint {
+      margin: 12px 0 0;
+      color: #7b8278;
+      font-size: 11px;
+      letter-spacing: 0.025em;
+    }
+
+    .quick-start {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: center;
+      align-items: center;
+      gap: 8px;
+      margin-top: 22px;
+    }
+
+    .quick-label {
+      margin-right: 2px;
+      color: #81877b;
+      font-size: 11px;
+    }
+
+    .quick-word {
+      padding: 6px 11px;
+      border: 1px solid #cfc7b6;
+      border-radius: 999px;
+      background: rgba(255, 253, 247, 0.6);
+      color: #4b564d;
+      font-family: var(--serif);
+      font-size: 13px;
+      transition: border-color 150ms ease, background 150ms ease;
+    }
+
+    .quick-word:hover {
+      border-color: #98a68f;
+      background: var(--accent);
+      color: var(--ink);
+    }
+
+    .card {
+      margin-top: 30px;
+      border: 1.5px solid var(--ink);
+      border-radius: var(--radius);
+      background: var(--paper);
+      box-shadow: var(--shadow);
+      animation: rise-in 300ms ease both;
+    }
+
+    @keyframes rise-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .loading-card {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      padding: 24px 28px;
+      color: #59635b;
+      font-size: 13px;
+    }
+
+    .loading-dots { display: inline-flex; gap: 4px; }
+    .loading-dots i {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: #66765f;
+      animation: bob 1.1s infinite ease-in-out;
+    }
+    .loading-dots i:nth-child(2) { animation-delay: 120ms; }
+    .loading-dots i:nth-child(3) { animation-delay: 240ms; }
+    @keyframes bob {
+      0%, 65%, 100% { transform: translateY(0); opacity: 0.35; }
+      30% { transform: translateY(-5px); opacity: 1; }
+    }
+
+    .result-card { padding: clamp(24px, 4vw, 38px); }
+
+    .result-top {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 24px;
+      padding-bottom: 27px;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .result-meta {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+      margin: 0 0 10px;
+      color: #8a8f83;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+    }
+
+    .meta-divider { opacity: 0.5; }
+    .cache-mark { color: #587c35; }
+
+    .result-word {
+      margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(2.75rem, 8vw, 4.6rem);
+      font-weight: 500;
+      line-height: 1.03;
+      letter-spacing: -0.045em;
+      overflow-wrap: anywhere;
+    }
+
+    .phonetic {
+      margin: 10px 0 0;
+      color: #637161;
+      font-family: var(--serif);
+      font-size: clamp(16px, 2.5vw, 19px);
+      letter-spacing: 0.035em;
+    }
+
+    .phonetic.is-missing { color: #9a9d93; font-family: var(--sans); font-size: 12px; }
+
+    .pos-list {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: flex-end;
+      gap: 7px;
+      max-width: 48%;
+    }
+
+    .pos-chip {
+      display: inline-flex;
+      align-items: baseline;
+      gap: 4px;
+      padding: 7px 10px;
+      border: 1px solid #c8d4b4;
+      border-radius: 7px;
+      background: #f4f8e8;
+      color: #465934;
+      font-size: 11px;
+      line-height: 1;
+      white-space: nowrap;
+    }
+
+    .pos-chip b { font-family: var(--serif); font-size: 12px; font-style: italic; }
+
+    .content-grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.15fr) minmax(0, 0.85fr);
+      gap: 0;
+      border-bottom: 1px solid var(--line);
+    }
+
+    .block { padding: 26px 0; }
+    .block + .block { border-left: 1px solid var(--line); padding-left: 28px; }
+
+    .related-title { margin-top: 28px; }
+
+    .block-title {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin: 0 0 16px;
+      font-size: 11px;
+      font-weight: 800;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: #5d675d;
+    }
+
+    .source-tag {
+      padding: 3px 6px;
+      border: 1px solid #ddd7c9;
+      border-radius: 4px;
+      color: #9a9c91;
+      font-size: 8px;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      white-space: nowrap;
+    }
+
+    .definitions { display: grid; gap: 11px; }
+
+    .definition {
+      margin: 0;
+      color: #2f3a32;
+      font-size: 14.5px;
+      line-height: 1.7;
+      overflow-wrap: anywhere;
+    }
+
+    .definition::before {
+      content: "";
+      display: inline-block;
+      width: 5px;
+      height: 5px;
+      margin: 0 9px 2px 0;
+      border-radius: 50%;
+      background: var(--orange);
+    }
+
+    .forms-wrap { display: grid; gap: 13px; }
+
+    .form-group {
+      display: grid;
+      grid-template-columns: 88px minmax(0, 1fr);
+      align-items: baseline;
+      gap: 10px;
+    }
+
+    .form-label {
+      color: #8a8f83;
+      font-size: 11px;
+      line-height: 1.6;
+    }
+
+    .form-words, .related-wrap { display: flex; flex-wrap: wrap; gap: 6px; }
+
+    .word-pill, .related-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 5px 9px;
+      border: 1px solid #d7d1c3;
+      border-radius: 6px;
+      background: #fbf8ef;
+      color: #374538;
+      line-height: 1.3;
+      text-align: left;
+      transition: background 140ms ease, border-color 140ms ease;
+    }
+
+    button.word-pill, button.related-pill:hover, button.related-pill:focus-visible {
+      border-color: #aab69d;
+      background: #f0f5e2;
+    }
+
+    button.word-pill:hover, button.word-pill:focus-visible { background: var(--accent); border-color: #a4bc5a; }
+    .word-pill { font-family: var(--serif); font-size: 14px; }
+    .related-word { font-family: var(--serif); font-size: 14px; }
+    .related-pos { color: #8b8e81; font-family: var(--sans); font-size: 9px; letter-spacing: 0.01em; }
+
+    .empty-copy {
+      margin: 0;
+      color: #94998d;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .example-wrap { padding-top: 28px; }
+
+    .example-card {
+      position: relative;
+      overflow: hidden;
+      margin-top: 16px;
+      padding: 25px 27px 24px;
+      border-radius: 18px;
+      background: var(--ink);
+      color: #f7f2e6;
+    }
+
+    .example-card::before {
+      content: "“";
+      position: absolute;
+      top: -30px;
+      right: 15px;
+      color: rgba(217, 242, 124, 0.15);
+      font-family: var(--serif);
+      font-size: 155px;
+      line-height: 1;
+      pointer-events: none;
+    }
+
+    .example-en {
+      position: relative;
+      z-index: 1;
+      max-width: 90%;
+      margin: 0;
+      font-family: var(--serif);
+      font-size: clamp(20px, 3.6vw, 27px);
+      line-height: 1.45;
+      letter-spacing: -0.018em;
+    }
+
+    .example-zh {
+      position: relative;
+      z-index: 1;
+      margin: 14px 0 0;
+      color: #c8d4c5;
+      font-size: 13px;
+      line-height: 1.7;
+    }
+
+    .example-foot {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      gap: 8px;
+      margin-top: 19px;
+      padding-top: 14px;
+      border-top: 1px solid rgba(255, 255, 255, 0.13);
+      color: #9cac9e;
+      font-size: 10px;
+    }
+
+    .example-missing {
+      margin-top: 16px;
+      padding: 17px 18px;
+      border: 1px dashed #d1bea7;
+      border-radius: 12px;
+      background: #fcf5e9;
+      color: #836a4e;
+      font-size: 12px;
+      line-height: 1.7;
+    }
+
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 12px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: 700;
+    }
+
+    .not-found-card, .error-card {
+      padding: clamp(30px, 6vw, 48px);
+      text-align: center;
+    }
+
+    .state-symbol {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 64px;
+      height: 64px;
+      margin-bottom: 18px;
+      border: 1.5px solid var(--ink);
+      border-radius: 50%;
+      background: var(--accent);
+      font-family: var(--serif);
+      font-size: 28px;
+      font-weight: 600;
+      transform: rotate(-4deg);
+    }
+
+    .state-symbol.error-symbol { background: #f5d5c8; color: var(--danger); }
+
+    .state-title {
+      margin: 0 0 9px;
+      font-family: var(--serif);
+      font-size: 32px;
+      font-weight: 500;
+      letter-spacing: -0.03em;
+    }
+
+    .state-copy {
+      max-width: 480px;
+      margin: 0 auto;
+      color: var(--muted);
+      font-size: 13px;
+      line-height: 1.8;
+    }
+
+    .state-copy strong { color: var(--ink); font-weight: 600; }
+
+    .retry-button {
+      margin-top: 19px;
+      padding: 10px 16px;
+      border: 1.5px solid var(--ink);
+      border-radius: 9px;
+      background: transparent;
+      color: var(--ink);
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .retry-button:hover { background: var(--accent); }
+
+    .page-footer {
+      position: relative;
+      z-index: 1;
+      width: min(100% - 36px, 920px);
+      margin: 0 auto;
+      padding: 7px 0 38px;
+      text-align: center;
+      color: #8a8f83;
+      font-size: 10px;
+      line-height: 1.8;
+    }
+
+    .page-footer a { color: #657061; text-underline-offset: 2px; }
+    .page-footer a:hover { color: var(--ink); }
+    .footer-divider { margin: 0 7px; opacity: 0.5; }
+
+    button:focus-visible, a:focus-visible {
+      outline: 2px solid #527634;
+      outline-offset: 3px;
+    }
+
+    @media (max-width: 680px) {
+      .shell { width: min(100% - 24px, 920px); padding-top: 34px; }
+      .lede { font-size: 13.5px; }
+      .search-form { margin-top: 24px; }
+      .search-box { padding-left: 14px; }
+      .search-button { min-width: 82px; min-height: 48px; padding: 0 14px; }
+      .result-card { border-radius: 21px; }
+      .result-top { flex-direction: column; gap: 17px; }
+      .pos-list { justify-content: flex-start; max-width: 100%; }
+      .content-grid { grid-template-columns: 1fr; }
+      .block + .block { border-left: 0; border-top: 1px solid var(--line); padding-left: 0; }
+      .form-group { grid-template-columns: 76px minmax(0, 1fr); gap: 7px; }
+      .example-en { max-width: 100%; }
+      .example-card { padding: 22px 20px; }
+      .quick-start { gap: 6px; }
+      .quick-label { flex-basis: 100%; margin-bottom: 2px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      *, *::before, *::after {
+        animation-duration: 0.01ms !important;
+        animation-iteration-count: 1 !important;
+        scroll-behavior: auto !important;
+        transition-duration: 0.01ms !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <main class="shell">
+    <header class="hero">
+      <div class="eyebrow"><span class="eyebrow-dot"></span>LOCAL-FIRST ENGLISH DICTIONARY</div>
+      <h1>Word <em>Helper</em><span class="period">.</span></h1>
+      <p class="lede">输入一个英文单词，查看本地词典释义、真实词形变化，以及由大模型生成的简短例句。</p>
+
+      <form class="search-form" id="search-form" novalidate>
+        <div class="search-box">
+          <svg class="search-icon" width="20" height="20" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+            <circle cx="11" cy="11" r="6.7" stroke="currentColor" stroke-width="1.8"></circle>
+            <path d="M16 16L20 20" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"></path>
+          </svg>
+          <input id="word-input" name="word" type="text" placeholder="输入英文单词，如 happy" maxlength="64"
+                 autocomplete="off" autocapitalize="off" spellcheck="false" aria-label="英文单词">
+          <button class="search-button" id="search-button" type="submit">查询</button>
+        </div>
+        <p class="search-hint">自动去除首尾空格 · 不区分大小写 · 按 Enter 查询</p>
+      </form>
+
+      <div class="quick-start" id="quick-start" aria-label="示例单词">
+        <span class="quick-label">试试看</span>
+        <button class="quick-word" type="button" data-lookup="happy">happy</button>
+        <button class="quick-word" type="button" data-lookup="go">go</button>
+        <button class="quick-word" type="button" data-lookup="child">child</button>
+        <button class="quick-word" type="button" data-lookup="beautiful">beautiful</button>
+        <button class="quick-word" type="button" data-lookup="EnGliSh">EnGliSh</button>
+      </div>
+    </header>
+
+    <section class="card loading-card" id="loading" hidden aria-live="polite">
+      <span class="loading-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+      <span>正在查询本地词典并生成例句…</span>
+    </section>
+
+    <section class="card not-found-card" id="not-found" hidden aria-live="polite">
+      <div class="state-symbol" aria-hidden="true">?</div>
+      <h2 class="state-title">未找到</h2>
+      <p class="state-copy">ECDICT 中没有 <strong id="not-found-word"></strong>。请检查拼写，或换一个单词试试。</p>
+    </section>
+
+    <section class="card error-card" id="error-card" hidden aria-live="polite">
+      <div class="state-symbol error-symbol" aria-hidden="true">!</div>
+      <h2 class="state-title">查询没有完成</h2>
+      <p class="state-copy" id="error-message">暂时无法获取结果，请稍后重试。</p>
+      <button class="retry-button" id="retry-button" type="button">重试</button>
+    </section>
+
+    <article class="card result-card" id="result" hidden aria-live="polite">
+      <div class="result-top">
+        <div class="word-heading">
+          <p class="result-meta">
+            <span>WORD</span>
+            <span class="meta-divider">/</span>
+            <span id="cache-status">ECDICT</span>
+          </p>
+          <h2 class="result-word" id="result-word"></h2>
+          <p class="phonetic" id="phonetic"></p>
+        </div>
+        <div class="pos-list" id="pos-list" aria-label="词性"></div>
+      </div>
+
+      <div class="content-grid">
+        <section class="block definitions-block">
+          <h3 class="block-title">中文释义 <span class="source-tag">ECDICT</span></h3>
+          <div class="definitions" id="definitions"></div>
+        </section>
+
+        <section class="block">
+          <h3 class="block-title">词形变化 <span class="source-tag">ECDICT</span></h3>
+          <div class="forms-wrap" id="forms"></div>
+          <p class="empty-copy" id="forms-empty" hidden>该词条暂未收录词形变化。</p>
+
+          <h3 class="block-title related-title">其他词性 / 派生词 <span class="source-tag">WORDNET</span></h3>
+          <div class="related-wrap" id="related"></div>
+          <p class="empty-copy" id="related-empty" hidden>暂未找到可展示的派生词。</p>
+        </section>
+      </div>
+
+      <section class="example-wrap">
+        <h3 class="block-title">英文例句 <span class="source-tag" id="example-source">LLM</span></h3>
+        <div class="example-card" id="example-card" hidden>
+          <p class="example-en" id="example-en"></p>
+          <p class="example-zh" id="example-zh"></p>
+          <div class="example-foot">
+            <span>AI 生成，仅作学习参考</span>
+            <span>由你的 LLM API 提供</span>
+          </div>
+        </div>
+        <div class="example-missing" id="example-missing" hidden></div>
+      </section>
+    </article>
+  </main>
+
+  <footer class="page-footer">
+    <div>释义与词形来自 <a href="https://github.com/skywind3000/ECDICT" target="_blank" rel="noreferrer">ECDICT</a>（MIT） · 派生词来自 <a href="https://wordnet.princeton.edu/" target="_blank" rel="noreferrer">WordNet</a> · 例句由 LLM 生成</div>
+    <div>Word Helper <span class="footer-divider">·</span> 本地优先，开放源代码 <span class="footer-divider">·</span> MIT License</div>
+  </footer>
+
+  <script>
+    (() => {
+      const form = document.getElementById("search-form");
+      const input = document.getElementById("word-input");
+      const searchButton = document.getElementById("search-button");
+      const loading = document.getElementById("loading");
+      const notFound = document.getElementById("not-found");
+      const notFoundWord = document.getElementById("not-found-word");
+      const errorCard = document.getElementById("error-card");
+      const errorMessage = document.getElementById("error-message");
+      const retryButton = document.getElementById("retry-button");
+      const result = document.getElementById("result");
+      const cacheStatus = document.getElementById("cache-status");
+      const resultWord = document.getElementById("result-word");
+      const phonetic = document.getElementById("phonetic");
+      const posList = document.getElementById("pos-list");
+      const definitions = document.getElementById("definitions");
+      const forms = document.getElementById("forms");
+      const formsEmpty = document.getElementById("forms-empty");
+      const related = document.getElementById("related");
+      const relatedEmpty = document.getElementById("related-empty");
+      const exampleCard = document.getElementById("example-card");
+      const exampleSource = document.getElementById("example-source");
+      const exampleEn = document.getElementById("example-en");
+      const exampleZh = document.getElementById("example-zh");
+      const exampleMissing = document.getElementById("example-missing");
+
+      let activeRequest = 0;
+      let controller = null;
+      let lastQuery = "";
+
+      function setBusy(busy) {
+        searchButton.disabled = busy;
+        searchButton.textContent = busy ? "查询中…" : "查询";
+        input.setAttribute("aria-busy", String(busy));
+      }
+
+      function hidePanels() {
+        result.hidden = true;
+        notFound.hidden = true;
+        errorCard.hidden = true;
+      }
+
+      function showNotFound(query) {
+        hidePanels();
+        notFoundWord.textContent = query;
+        notFound.hidden = false;
+        notFound.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      function showError(message) {
+        hidePanels();
+        errorMessage.textContent = message;
+        errorCard.hidden = false;
+        errorCard.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      function element(tag, className, text) {
+        const node = document.createElement(tag);
+        if (className) node.className = className;
+        if (text !== undefined) node.textContent = text;
+        return node;
+      }
+
+      function lookupButton(word, className, extra) {
+        const button = element("button", className);
+        button.type = "button";
+        button.dataset.lookup = word;
+        button.appendChild(element("span", className === "related-pill" ? "related-word" : "word-pill-text", word));
+        if (extra) button.appendChild(extra);
+        return button;
+      }
+
+      function renderResult(data) {
+        hidePanels();
+        resultWord.textContent = data.word;
+        cacheStatus.textContent = data.cached ? "本地缓存" : "ECDICT";
+        cacheStatus.className = data.cached ? "cache-mark" : "";
+
+        const pronunciation = (data.phonetic || "").trim();
+        if (pronunciation) {
+          phonetic.textContent = pronunciation.startsWith("/") ? pronunciation : "/" + pronunciation + "/";
+          phonetic.classList.remove("is-missing");
+        } else {
+          phonetic.textContent = "音标暂缺";
+          phonetic.classList.add("is-missing");
+        }
+
+        posList.replaceChildren();
+        (data.pos || []).forEach((item) => {
+          const chip = element("span", "pos-chip");
+          chip.appendChild(element("b", "", item.code + "."));
+          chip.appendChild(document.createTextNode(item.label));
+          posList.appendChild(chip);
+        });
+
+        definitions.replaceChildren();
+        (data.definitions || []).forEach((line) => {
+          definitions.appendChild(element("p", "definition", line));
+        });
+        if (!definitions.childElementCount) {
+          definitions.appendChild(element("p", "empty-copy", "该词条暂无中文释义。"));
+        }
+
+        forms.replaceChildren();
+        (data.forms || []).forEach((group) => {
+          const row = element("div", "form-group");
+          row.appendChild(element("span", "form-label", group.label));
+          const words = element("div", "form-words");
+          (group.words || []).forEach((word) => {
+            words.appendChild(lookupButton(word, "word-pill"));
+          });
+          row.appendChild(words);
+          forms.appendChild(row);
+        });
+        formsEmpty.hidden = Boolean((data.forms || []).length);
+
+        related.replaceChildren();
+        (data.related || []).forEach((item) => {
+          const posTag = element("span", "related-pos", item.pos);
+          related.appendChild(lookupButton(item.word, "related-pill", posTag));
+        });
+        relatedEmpty.hidden = Boolean((data.related || []).length);
+
+        if (data.example && data.example.en && data.example.zh) {
+          exampleCard.hidden = false;
+          exampleMissing.hidden = true;
+          exampleEn.textContent = data.example.en;
+          exampleZh.textContent = data.example.zh;
+          exampleSource.textContent = data.cached ? "LLM · 缓存" : "LLM 生成";
+        } else {
+          exampleCard.hidden = true;
+          exampleMissing.hidden = false;
+          exampleMissing.textContent = data.example_error || "例句暂时不可用，稍后重试即可。";
+          exampleSource.textContent = "LLM";
+        }
+
+        result.hidden = false;
+        result.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      }
+
+      async function runSearch(rawQuery) {
+        const query = String(rawQuery || "").trim();
+        input.value = query;
+        if (!query) {
+          input.focus();
+          return;
+        }
+
+        lastQuery = query;
+        try {
+          const pageUrl = new URL(window.location.href);
+          pageUrl.searchParams.set("q", query);
+          window.history.replaceState(null, "", pageUrl);
+        } catch (_) { /* URL updates are optional */ }
+        if (controller) controller.abort();
+        controller = new AbortController();
+        const requestId = ++activeRequest;
+
+        hidePanels();
+        loading.hidden = false;
+        setBusy(true);
+
+        try {
+          const response = await fetch("/api/word?q=" + encodeURIComponent(query), {
+            signal: controller.signal,
+            headers: { "Accept": "application/json" }
+          });
+          let payload = {};
+          try { payload = await response.json(); } catch (_) { /* handled below */ }
+
+          if (requestId !== activeRequest) return;
+          if (response.status === 404) {
+            showNotFound(query);
+            return;
+          }
+          if (!response.ok) {
+            const detail = typeof payload.detail === "string" ? payload.detail : "查询失败，请稍后重试。";
+            throw new Error(detail);
+          }
+          renderResult(payload);
+        } catch (error) {
+          if (requestId !== activeRequest) return;
+          if (error.name === "AbortError") return;
+          showError(error.message || "网络连接失败，请稍后重试。");
+        } finally {
+          if (requestId === activeRequest) {
+            loading.hidden = true;
+            setBusy(false);
+          }
+        }
+      }
+
+      form.addEventListener("submit", (event) => {
+        event.preventDefault();
+        runSearch(input.value);
+      });
+
+      retryButton.addEventListener("click", () => runSearch(lastQuery));
+
+      document.addEventListener("click", (event) => {
+        const trigger = event.target.closest("[data-lookup]");
+        if (!trigger) return;
+        event.preventDefault();
+        runSearch(trigger.dataset.lookup);
+      });
+
+      const initialQuery = new URLSearchParams(window.location.search).get("q");
+      if (initialQuery) {
+        runSearch(initialQuery);
+      } else {
+        input.focus();
+      }
+    })();
+  </script>
+</body>
+</html>

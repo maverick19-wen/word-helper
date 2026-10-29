@@ -1,0 +1,19 @@
+# Secrets
+.env
+
+# Python
+.venv/
+__pycache__/
+*.py[cod]
+
+# Local data (large files and runtime caches)
+data/
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
